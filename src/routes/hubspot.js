@@ -13,3 +13,4 @@ router.post('/lifecycle', validar('actualizarLifecycle'), hubspotController.actu
 router.post('/estatus-lead', validar('actualizarEstatusLead'), hubspotController.actualizarEstatusLead);
 
 module.exports = router;
+
