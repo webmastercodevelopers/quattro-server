@@ -5,6 +5,10 @@ const hubspotService = require('../services/hubspotService');
 // ─── Helper: guardar payload en JSON para debug/log ───────────────────────────
 const saveToFile = (payload) => {
     try {
+        // Crear el directorio si no existe
+        const dir = path.dirname(config.DATA_FILE);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
         let fileData = [];
         if (fs.existsSync(config.DATA_FILE)) {
             const raw = fs.readFileSync(config.DATA_FILE, 'utf8');
