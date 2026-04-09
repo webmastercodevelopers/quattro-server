@@ -28,7 +28,7 @@ quattro-webhook/
 
 1. Install dependencies:
    ```bash
-   npm install
+   bun install
    ```
 
 2. Copy the environment file and configure:
