@@ -1,15 +1,52 @@
 const axios = require('axios');
 const config = require('../config');
 
+// ─── Validación de config al arrancar ────────────────────────────────────────
+if (!config.QUATTRO_BASIC_AUTH) {
+    throw new Error('❌ QUATTRO_BASIC_AUTH no está definido en .env');
+}
+if (!config.QUATTRO_AUTH_URL) {
+    throw new Error('❌ QUATTRO_AUTH_URL no está definido en .env');
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+let cachedToken = null;
+let tokenExpiry = null;
+
+const getToken = async () => {
+    if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
+        return cachedToken;
+    }
+
+    try {
+        console.log('🔐 Obteniendo token de Quattro...');
+        const res = await axios.post(config.QUATTRO_AUTH_URL, {}, {
+            headers: { 'Authorization': config.QUATTRO_BASIC_AUTH }
+        });
+
+        cachedToken = res.data.result.token;
+        tokenExpiry = Date.now() + (60 * 60 * 1000);
+        console.log('✅ Token obtenido correctamente');
+        return cachedToken;
+
+    } catch (error) {
+        console.error('❌ Error obteniendo token de Quattro:', error.message);
+        throw error;
+    }
+};
+
+// ─── Axios instance ───────────────────────────────────────────────────────────
 const quattro = axios.create({
     baseURL: config.QUATTRO_API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-        // Descomentar cuando COPSIS confirme el tipo de autenticación
-        // 'Authorization': `Bearer ${config.QUATTRO_API_KEY}`,
-        // 'x-api-key': config.QUATTRO_API_KEY,
-    }
+    headers: { 'Content-Type': 'application/json' }
 });
+
+quattro.interceptors.request.use(async (reqConfig) => {
+    const token = await getToken();
+    reqConfig.headers['Authorization'] = `Bearer ${token}`;
+    return reqConfig;
+});
+
 
 // ─── Mapeo de campos HubSpot → Quattro ───────────────────────────────────────
 const mapearProspecto = (payload) => {
@@ -45,7 +82,6 @@ exports.crearProspecto = async (payload) => {
         const res = await quattro.post('/hubspot/prospecto', body);
         console.log('✅ Respuesta Quattro:', res.data);
 
-        // Quattro regresa { ok: true, result: { contactID: 455 } }
         if (!res.data.ok) {
             throw new Error('Quattro respondió ok: false');
         }
@@ -53,7 +89,7 @@ exports.crearProspecto = async (payload) => {
         return res.data.result;
 
     } catch (error) {
-        console.error('Error creando prospecto en Quattro:', error.message);
+        console.error('❌ Error creando prospecto en Quattro:', error.message);
         throw error;
     }
 };
@@ -70,7 +106,6 @@ exports.actualizarProspecto = async (payload) => {
         const body = mapearProspecto(payload);
         console.log(`📤 Actualizando prospecto ${contactID} en Quattro:`, body);
 
-        // Mismo endpoint que crear, pero con PUT o PATCH
         const res = await quattro.put('/hubspot/prospecto', body);
         console.log('✅ Respuesta Quattro:', res.data);
 
@@ -81,7 +116,7 @@ exports.actualizarProspecto = async (payload) => {
         return res.data.result;
 
     } catch (error) {
-        console.error('Error actualizando prospecto en Quattro:', error.message);
+        console.error('❌ Error actualizando prospecto en Quattro:', error.message);
         throw error;
     }
 };
