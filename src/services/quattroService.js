@@ -20,6 +20,9 @@ const getToken = async () => {
 
     try {
         console.log('🔐 Obteniendo token de Quattro...');
+        console.log('URL:', config.QUATTRO_AUTH_URL);
+        console.log('Auth header presente:', !!config.QUATTRO_BASIC_AUTH);
+
         const res = await axios.post(config.QUATTRO_AUTH_URL, {}, {
             headers: { 'Authorization': config.QUATTRO_BASIC_AUTH }
         });
@@ -30,7 +33,9 @@ const getToken = async () => {
         return cachedToken;
 
     } catch (error) {
-        console.error('❌ Error obteniendo token de Quattro:', error.message);
+        console.error('❌ Error obteniendo token:', error.message);
+        console.error('❌ Response data:', error.response?.data);
+        console.error('❌ Response status:', error.response?.status);
         throw error;
     }
 };
