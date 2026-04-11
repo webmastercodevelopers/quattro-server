@@ -42,6 +42,8 @@ const schemas = {
 // ─── Factory: genera middleware para cada schema ──────────────────────────────
 const validar = (schemaName) => {
     return (req, res, next) => {
+        console.log(`📨 Body recibido en ${schemaName}:`, JSON.stringify(req.body));
+
         const schema = schemas[schemaName];
 
         if (!schema) {
