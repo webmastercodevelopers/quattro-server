@@ -28,7 +28,8 @@ const getToken = async () => {
         });
 
         cachedToken = res.data.result.token;
-        tokenExpiry = Date.now() + (60 * 60 * 1000);
+        // Cambiar de 60 minutos a 25 minutos para tener margen
+        tokenExpiry = Date.now() + (25 * 60 * 1000);
         console.log('✅ Token obtenido correctamente');
         return cachedToken;
 
