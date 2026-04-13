@@ -7,7 +7,7 @@ const errorHandler = require('./src/middleware/errorHandler');
 const app = express();
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // Routes
 app.use('/api/webhook', webhookRoutes);       // Quattro → HubSpot (Casos 4 y 5)
