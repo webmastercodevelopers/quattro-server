@@ -147,13 +147,22 @@ const obtenerContactoPorId = async (contactId) => {
         const res = await hubspot.get(`/crm/v3/objects/contacts/${contactId}`, {
             params: {
                 properties: [
-                    'email', 'firstname', 'lastname', 'jobtitle', 'company',
-                    'zip', 'industry', 'numberofemployees', 'hs_whatsapp_phone',
-                    'producto_autos', 'producto_accidentes', 'producto_danos',
-                    'producto_fianzas', 'producto_gmm', 'producto_vida'
+                    'firstname', 'lastname', 'email', 'cargo', 'city',
+                    'cmo_prefieres_que_te_contactemos', 'company', 'country',
+                    'createdate', 'estado_de_la_republica', 'industria_dropdown',
+                    'lifecyclestage', 'numero_de_colaboradores',
+                    'producto__accidentes_personales_', 'producto__autos_',
+                    'producto__danos_', 'producto__fianzas_',
+                    'producto__gastos_medicos_mayores_', 'producto__vida_',
+                    'que_producto_te_interesa_', 'tipo_de_producto',
+                    'lead_scoring_metropoli', 'estatus_del_lead',
+                    'motivo_de_rechazo', 'etapa_del_proceso'
                 ].join(',')
             }
         });
+
+
+
         console.log(`✅ Contacto obtenido: ${contactId}`);
         return res.data;
     } catch (error) {
