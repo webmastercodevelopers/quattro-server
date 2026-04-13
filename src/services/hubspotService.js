@@ -141,6 +141,30 @@ const moverDealEtapa = async (dealId, etapaId) => {
     }
 };
 
+
+const obtenerContactoPorId = async (contactId) => {
+    try {
+        const res = await hubspot.get(`/crm/v3/objects/contacts/${contactId}`, {
+            params: {
+                properties: [
+                    'email', 'firstname', 'lastname', 'jobtitle', 'company',
+                    'zip', 'industry', 'numberofemployees', 'hs_whatsapp_phone',
+                    'producto_autos', 'producto_accidentes', 'producto_danos',
+                    'producto_fianzas', 'producto_gmm', 'producto_vida'
+                ].join(',')
+            }
+        });
+        console.log(`✅ Contacto obtenido: ${contactId}`);
+        return res.data;
+    } catch (error) {
+        console.error(`❌ Error obteniendo contacto ${contactId}:`, error.message);
+        throw error;
+    }
+};
+
+exports.obtenerContactoPorId = obtenerContactoPorId;
+
+
 // ─── Caso 4: Cierre de venta ──────────────────────────────────────────────────
 
 exports.procesarCierreVenta = async (payload) => {

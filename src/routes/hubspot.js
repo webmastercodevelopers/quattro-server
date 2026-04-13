@@ -3,8 +3,8 @@ const router = express.Router();
 const hubspotController = require('../controllers/hubspotController');
 const validar = require('../middleware/validatePayload');
 
-// Caso 1 - Contacto llena formulario
-router.post('/prospecto', validar('crearProspecto'), hubspotController.crearProspecto);
+// Caso 1 - sin validación, el body es webhook de HubSpot
+router.post('/prospecto', hubspotController.crearProspecto);
 
 // Caso 2 - Cambio en Lifecycle Stage
 router.post('/lifecycle', validar('actualizarLifecycle'), hubspotController.actualizarLifecycle);

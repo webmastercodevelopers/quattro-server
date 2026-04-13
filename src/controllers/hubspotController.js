@@ -1,6 +1,7 @@
 const fs = require('fs');
 const config = require('../config');
 const quattroService = require('../services/quattroService');
+const hubspotService = require('../services/hubspotService');
 
 // ─── Helper: guardar payload en JSON para debug/log ───────────────────────────
 const saveToFile = (payload) => {
@@ -20,14 +21,47 @@ const saveToFile = (payload) => {
 // ─── Caso 1: Contacto llena formulario (HubSpot → Quattro) ───────────────────
 exports.crearProspecto = async (req, res) => {
     const payload = req.body;
-    console.log('📥 Caso 1 - Contacto llena formulario:', payload);
-    saveToFile({ caso: 'crear_prospecto', ...payload });
+    const eventos = Array.isArray(payload) ? payload : [payload];
+    const evento = eventos[0];
+
+    console.log('📥 Caso 1 - Webhook HubSpot recibido:', evento);
 
     try {
-        // 1. Mapear campos de HubSpot al formato que espera Quattro
-        // 2. Enviar a Quattro POST /hubspot/prospecto
-        // 3. Guardar contactID que regresa Quattro
-        const result = await quattroService.crearProspecto(payload);
+        const contactId = evento.objectId;
+        if (!contactId) {
+            return res.status(400).json({ error: 'objectId no encontrado en webhook' });
+        }
+
+        // Consultar datos completos del contacto en HubSpot
+        const contacto = await hubspotService.obtenerContactoPorId(contactId);
+        const props = contacto.properties;
+
+        // Mapear campos HubSpot → Quattro
+        const prospecto = {
+            contactID: 0,
+            firstName: props.firstname || '',
+            lastName: props.lastname || '',
+            email: props.email || '',
+            job: props.jobtitle || '',
+            companyName: props.company || '',
+            contacto: props.hs_whatsapp_phone ? 'WhatsApp' : '',
+            cp: props.zip || '00000',
+            giro: props.industry || '',
+            noColaboradores: props.numberofemployees || '0',
+            status: 1,
+            productos: {
+                autos: props.producto_autos === 'true',
+                accidentesPersonales: props.producto_accidentes === 'true',
+                daños: props.producto_danos === 'true',
+                fianzas: props.producto_fianzas === 'true',
+                gmm: props.producto_gmm === 'true',
+                vida: props.producto_vida === 'true',
+            }
+        };
+
+        console.log('📤 Enviando prospecto a Quattro:', prospecto);
+
+        const result = await quattroService.crearProspecto(prospecto);
 
         res.status(200).json({
             status: 'success',
@@ -36,7 +70,7 @@ exports.crearProspecto = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en crearProspecto:', error.message);
+        console.error('❌ Error en crearProspecto:', error.message);
         res.status(500).json({ error: 'Error creando prospecto en Quattro' });
     }
 };
