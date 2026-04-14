@@ -79,6 +79,14 @@ exports.crearProspecto = async (req, res) => {
         console.log('📤 Enviando prospecto a Quattro:', prospecto);
         const result = await quattroService.crearProspecto(prospecto);
 
+        // Guardar el ID de Quattro en HubSpot
+        if (result?.contactID) {
+            await hubspotService.actualizarContacto(contactId, {
+                id_quattro: String(result.contactID)
+            });
+            console.log(`✅ ID Quattro ${result.contactID} guardado en HubSpot contacto ${contactId}`);
+        }
+
         res.status(200).json({
             status: 'success',
             message: subscriptionType === 'contact.propertyChange'
@@ -86,6 +94,7 @@ exports.crearProspecto = async (req, res) => {
                 : 'Prospecto creado en Quattro',
             data: result
         });
+
 
     } catch (error) {
         console.error('❌ Error en crearProspecto:', error.message);

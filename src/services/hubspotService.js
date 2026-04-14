@@ -65,6 +65,21 @@ const crearContacto = async (datos) => {
     }
 };
 
+const actualizarContacto = async (contactId, propiedades) => {
+    try {
+        const res = await hubspot.patch(`/crm/v3/objects/contacts/${contactId}`, {
+            properties: propiedades
+        });
+        console.log(`✅ Contacto ${contactId} actualizado en HubSpot`);
+        return res.data;
+    } catch (error) {
+        console.error(`❌ Error actualizando contacto ${contactId}:`, error.message);
+        throw error;
+    }
+};
+
+exports.actualizarContacto = actualizarContacto;
+
 // ─── Deals ────────────────────────────────────────────────────────────────────
 
 const crearDeal = async (contactId, payload) => {
