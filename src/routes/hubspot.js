@@ -15,5 +15,6 @@ router.post('/estatus-lead', validar('actualizarEstatusLead'), hubspotController
 
 
 
+
 module.exports = router;
 
