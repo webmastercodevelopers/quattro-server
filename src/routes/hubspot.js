@@ -9,8 +9,14 @@ router.post('/prospecto', hubspotController.crearProspecto);
 // Caso 2 - Cambio en Lifecycle Stage
 router.post('/lifecycle', validar('actualizarLifecycle'), hubspotController.actualizarLifecycle);
 
+// Caso 2b - Lead Scoring >= 50
+router.post('/lead-scoring', hubspotController.leadScoring);
+
 // Caso 3 - Cambio de estatus del lead
 router.post('/estatus-lead', validar('actualizarEstatusLead'), hubspotController.actualizarEstatusLead);
+
+
+
 
 module.exports = router;
 
