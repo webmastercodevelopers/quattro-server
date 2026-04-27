@@ -116,6 +116,7 @@ const crearDeal = async (contactId, payload) => {
 
     } catch (error) {
         console.error('Error creando deal:', error.message);
+        console.error('HubSpot error response:', JSON.stringify(error.response?.data));  // ← agregar esta línea
         throw error;
     }
 };
