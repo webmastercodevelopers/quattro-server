@@ -171,7 +171,7 @@ const obtenerContactoPorId = async (contactId) => {
                     'producto__gastos_medicos_mayores_', 'producto__vida_',
                     'que_producto_te_interesa_', 'tipo_de_producto',
                     'lead_scoring_metropoli', 'estatus_del_lead',
-                    'motivo_de_rechazo', 'etapa_del_proceso'
+                    'motivo_de_rechazo', 'etapa_del_proceso', 'id_quattro'
                 ].join(',')
             }
         });
