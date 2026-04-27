@@ -73,7 +73,7 @@ exports.crearProspecto = async (req, res) => {
 
 
     const contactId = extraerContactId(req.body);
-    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+
 
     console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType: evento.subscriptionType });
 
