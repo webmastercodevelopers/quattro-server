@@ -60,22 +60,18 @@ const lifecycleToStatus = {
 
 // ─── Caso 1: Contacto llena formulario ───────────────────────────────────────
 exports.crearProspecto = async (req, res) => {
-
     const evento = Array.isArray(req.body) ? req.body[0] : req.body;
     const subscriptionType = evento.subscriptionType || '';
 
-    // Ignorar eventos que no son de contacto
     const tiposPermitidos = ['contact.creation', 'contact.propertyChange'];
     if (!tiposPermitidos.includes(subscriptionType)) {
         console.log(`⏭️ Ignorando evento: ${subscriptionType}`);
         return res.status(200).json({ status: 'ignored', message: `Evento ${subscriptionType} ignorado` });
     }
 
-
     const contactId = extraerContactId(req.body);
 
-
-    console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType: evento.subscriptionType });
+    console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType });
 
     if (!contactId) {
         return res.status(400).json({ error: 'objectId no encontrado en webhook' });
@@ -83,21 +79,31 @@ exports.crearProspecto = async (req, res) => {
 
     try {
         const contacto = await hubspotService.obtenerContactoPorId(contactId);
-        const prospecto = mapearProspecto(contacto.properties, 1);
+        const props = contacto.properties;
+        const prospecto = mapearProspecto(props, 1);
 
-        console.log('📤 Enviando prospecto a Quattro:', prospecto);
-        const result = await quattroService.crearProspecto(prospecto);
+        let result;
 
-        if (result?.contactID) {
-            await hubspotService.actualizarContacto(contactId, {
-                id_quattro: String(result.contactID)
-            });
-            console.log(`✅ ID Quattro ${result.contactID} guardado en HubSpot contacto ${contactId}`);
+        if (props.id_quattro) {
+            // Ya existe en Quattro → actualizar
+            console.log(`📤 Contacto ya existe en Quattro (${props.id_quattro}), actualizando...`);
+            result = await quattroService.actualizarProspecto(prospecto);
+        } else {
+            // No existe → crear
+            console.log('📤 Contacto nuevo, creando en Quattro...');
+            result = await quattroService.crearProspecto(prospecto);
+
+            if (result?.contactID) {
+                await hubspotService.actualizarContacto(contactId, {
+                    id_quattro: String(result.contactID)
+                });
+                console.log(`✅ ID Quattro ${result.contactID} guardado en HubSpot contacto ${contactId}`);
+            }
         }
 
         res.status(200).json({
             status: 'success',
-            message: 'Prospecto creado en Quattro',
+            message: props.id_quattro ? 'Prospecto actualizado en Quattro' : 'Prospecto creado en Quattro',
             data: result
         });
 
