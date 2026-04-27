@@ -86,27 +86,26 @@ const crearDeal = async (contactId, payload) => {
     try {
         const res = await hubspot.post('/crm/v3/objects/deals', {
             properties: {
-                dealname: `Póliza ${payload.numeroPoliza}`,
+                dealname: `Póliza ${payload.numeroPoliza} - ${payload.tipoPoliza || ''}`,
                 pipeline: PIPELINE_ID,
                 dealstage: ETAPA_EN_PROCESO,
                 closedate: payload.fechaEmision,
                 amount: payload.primaNeta,
-                // Propiedades custom de Quattro
-                numero_poliza: payload.numeroPoliza,
-                tipo_poliza: payload.tipoPoliza,
+                poliza: payload.numeroPoliza,
+                tipo: payload.tipoPoliza,
                 vigencia_de: payload.vigenciaDe,
                 vigencia_a: payload.vigenciaA,
-                prima_neta: payload.primaNeta,
-                iva: payload.iva,
-                comision: payload.comision,
-                estatus_poliza: payload.estatus,
+                primaneta: payload.primaNeta,
+                iva: String(payload.iva),
+                porcentajecomision: String(payload.comision),
+                estatus: payload.estatus,
                 vendedor: payload.vendedor,
             },
             associations: [{
                 to: { id: contactId },
                 types: [{
                     associationCategory: 'HUBSPOT_DEFINED',
-                    associationTypeId: 3 // Contact → Deal
+                    associationTypeId: 3
                 }]
             }]
         });
@@ -116,7 +115,7 @@ const crearDeal = async (contactId, payload) => {
 
     } catch (error) {
         console.error('Error creando deal:', error.message);
-        console.error('HubSpot error response:', JSON.stringify(error.response?.data));  // ← agregar esta línea
+        console.error('HubSpot error response:', JSON.stringify(error.response?.data));
         throw error;
     }
 };
