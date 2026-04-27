@@ -60,6 +60,18 @@ const lifecycleToStatus = {
 
 // ─── Caso 1: Contacto llena formulario ───────────────────────────────────────
 exports.crearProspecto = async (req, res) => {
+
+    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+    const subscriptionType = evento.subscriptionType || '';
+
+    // Ignorar eventos que no son de contacto
+    const tiposPermitidos = ['contact.creation', 'contact.propertyChange'];
+    if (!tiposPermitidos.includes(subscriptionType)) {
+        console.log(`⏭️ Ignorando evento: ${subscriptionType}`);
+        return res.status(200).json({ status: 'ignored', message: `Evento ${subscriptionType} ignorado` });
+    }
+
+
     const contactId = extraerContactId(req.body);
     const evento = Array.isArray(req.body) ? req.body[0] : req.body;
 
