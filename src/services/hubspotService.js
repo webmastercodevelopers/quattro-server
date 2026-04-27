@@ -93,7 +93,7 @@ const crearDeal = async (contactId, payload) => {
                 amount: payload.primaNeta,
                 poliza: payload.numeroPoliza,
                 tipo: payload.tipoPoliza,
-                vigencia_de: payload.vigenciaDe,
+                vigenciade: payload.vigenciaDe,
                 vigencia_a: payload.vigenciaA,
                 primaneta: payload.primaNeta,
                 iva: String(payload.iva),
