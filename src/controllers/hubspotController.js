@@ -69,6 +69,12 @@ exports.crearProspecto = async (req, res) => {
         return res.status(200).json({ status: 'ignored', message: `Evento ${subscriptionType} ignorado` });
     }
 
+    // Ignorar si el cambio fue en id_quattro (evita loop)
+    if (subscriptionType === 'contact.propertyChange' && evento.propertyName === 'id_quattro') {
+        console.log('⏭️ Ignorando cambio en id_quattro para evitar loop');
+        return res.status(200).json({ status: 'ignored', message: 'Cambio en id_quattro ignorado' });
+    }
+
     const contactId = extraerContactId(req.body);
 
     console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType });
