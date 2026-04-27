@@ -19,8 +19,8 @@ const saveToFile = (payload) => {
 };
 
 // ─── Helper: mapear props de HubSpot → payload Quattro ───────────────────────
-const mapearProspecto = (props) => ({
-    contactID: 0,
+const mapearProspecto = (props, status = 1) => ({
+    contactID: parseInt(props.id_quattro) || 0,
     firstName: props.firstname || '',
     lastName: props.lastname || '',
     email: props.email || '',
@@ -30,7 +30,7 @@ const mapearProspecto = (props) => ({
     cp: props.zip || '00000',
     giro: props.industria_dropdown || '',
     noColaboradores: props.numero_de_colaboradores || '0',
-    status: 1,
+    status,
     productos: {
         autos: props.producto__autos_ === 'true',
         accidentesPersonales: props.producto__accidentes_personales_ === 'true',
@@ -41,45 +41,41 @@ const mapearProspecto = (props) => ({
     }
 });
 
-// ─── Caso 1 y 2b: Entrada principal HubSpot → Quattro ────────────────────────
+// ─── Helper: extraer contactId del webhook de HubSpot ────────────────────────
+const extraerContactId = (body) => {
+    const eventos = Array.isArray(body) ? body : [body];
+    return eventos[0]?.objectId || null;
+};
+
+// ─── Mapeo de lifecycleStage → status Quattro ────────────────────────────────
+const lifecycleToStatus = {
+    'subscriber': 1,
+    'lead': 1,
+    'marketingqualifiedlead': 2,
+    'salesqualifiedlead': 3,
+    'opportunity': 3,
+    'customer': 6,
+    'other': 1,
+};
+
+// ─── Caso 1: Contacto llena formulario ───────────────────────────────────────
 exports.crearProspecto = async (req, res) => {
-    const payload = req.body;
-    const eventos = Array.isArray(payload) ? payload : [payload];
-    const evento = eventos[0];
+    const contactId = extraerContactId(req.body);
+    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
 
-    const subscriptionType = evento.subscriptionType;
-    const propertyName = evento.propertyName;
-    const propertyValue = evento.propertyValue;
+    console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType: evento.subscriptionType });
 
-    console.log('📥 Webhook HubSpot recibido:', { subscriptionType, propertyName, propertyValue });
+    if (!contactId) {
+        return res.status(400).json({ error: 'objectId no encontrado en webhook' });
+    }
 
     try {
-        const contactId = evento.objectId;
-        if (!contactId) {
-            return res.status(400).json({ error: 'objectId no encontrado en webhook' });
-        }
-
-        // ─── Caso 2b: Lead Scoring >= 50 ─────────────────────────────────────
-        if (subscriptionType === 'contact.propertyChange' && propertyName === 'lead_scoring_metropoli') {
-            const score = parseInt(propertyValue, 10);
-            if (isNaN(score) || score < 50) {
-                console.log(`⏭️ Lead scoring ${score} < 50, ignorando`);
-                return res.status(200).json({ status: 'ignored', message: 'Score menor a 50, no se envía a Quattro' });
-            }
-            console.log(`🎯 Caso 2b - Lead Scoring ${score} >= 50, enviando a Quattro`);
-        }
-
-        // ─── Caso 1: Formulario llenado (contact.creation o form submission) ──
-        // Ambos casos consultan el contacto completo y envían a Quattro
         const contacto = await hubspotService.obtenerContactoPorId(contactId);
-        const props = contacto.properties;
-
-        const prospecto = mapearProspecto(props);
+        const prospecto = mapearProspecto(contacto.properties, 1);
 
         console.log('📤 Enviando prospecto a Quattro:', prospecto);
         const result = await quattroService.crearProspecto(prospecto);
 
-        // Guardar el ID de Quattro en HubSpot
         if (result?.contactID) {
             await hubspotService.actualizarContacto(contactId, {
                 id_quattro: String(result.contactID)
@@ -89,12 +85,9 @@ exports.crearProspecto = async (req, res) => {
 
         res.status(200).json({
             status: 'success',
-            message: subscriptionType === 'contact.propertyChange'
-                ? 'Lead calificado enviado a Quattro'
-                : 'Prospecto creado en Quattro',
+            message: 'Prospecto creado en Quattro',
             data: result
         });
-
 
     } catch (error) {
         console.error('❌ Error en crearProspecto:', error.message);
@@ -102,14 +95,42 @@ exports.crearProspecto = async (req, res) => {
     }
 };
 
-// ─── Caso 2: Cambio en Lifecycle Stage (HubSpot → Quattro) ───────────────────
+// ─── Caso 2a: Cambio en Lifecycle Stage ──────────────────────────────────────
 exports.actualizarLifecycle = async (req, res) => {
-    const payload = req.body;
-    console.log('📥 Caso 2 - Cambio Lifecycle Stage:', payload);
-    saveToFile({ caso: 'lifecycle_change', ...payload });
+    const contactId = extraerContactId(req.body);
+    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+    const nuevoLifecycle = evento.propertyValue || '';
+
+    console.log('📥 Caso 2a - Lifecycle Stage:', { contactId, nuevoLifecycle });
+
+    if (!contactId) {
+        return res.status(400).json({ error: 'objectId no encontrado en webhook' });
+    }
 
     try {
-        const result = await quattroService.actualizarProspecto(payload);
+        const contacto = await hubspotService.obtenerContactoPorId(contactId);
+        const props = contacto.properties;
+
+        // Verificar que tiene ID de Quattro
+        if (!props.id_quattro) {
+            console.warn(`⚠️ Contacto ${contactId} no tiene id_quattro, creando en Quattro primero`);
+            const prospecto = mapearProspecto(props, 1);
+            const result = await quattroService.crearProspecto(prospecto);
+            if (result?.contactID) {
+                await hubspotService.actualizarContacto(contactId, {
+                    id_quattro: String(result.contactID)
+                });
+                props.id_quattro = String(result.contactID);
+            }
+        }
+
+        const status = lifecycleToStatus[nuevoLifecycle] || 1;
+        const prospecto = mapearProspecto(props, status);
+
+        console.log('📤 Actualizando prospecto en Quattro (lifecycle):', prospecto);
+        const result = await quattroService.actualizarProspecto(prospecto);
+
+        saveToFile({ caso: 'lifecycle_change', contactId, nuevoLifecycle, result });
 
         res.status(200).json({
             status: 'success',
@@ -123,14 +144,95 @@ exports.actualizarLifecycle = async (req, res) => {
     }
 };
 
-// ─── Caso 3: Cambio de estatus del lead (HubSpot → Quattro) ──────────────────
-exports.actualizarEstatusLead = async (req, res) => {
-    const payload = req.body;
-    console.log('📥 Caso 3 - Cambio estatus lead:', payload);
-    saveToFile({ caso: 'estatus_lead', ...payload });
+// ─── Caso 2b: Lead Scoring >= 50 ─────────────────────────────────────────────
+exports.leadScoring = async (req, res) => {
+    const contactId = extraerContactId(req.body);
+    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+    const score = parseInt(evento.propertyValue, 10);
+
+    console.log('📥 Caso 2b - Lead Scoring:', { contactId, score });
+
+    if (!contactId) {
+        return res.status(400).json({ error: 'objectId no encontrado en webhook' });
+    }
+
+    if (isNaN(score) || score < 50) {
+        console.log(`⏭️ Score ${score} < 50, ignorando`);
+        return res.status(200).json({ status: 'ignored', message: 'Score menor a 50' });
+    }
 
     try {
-        const result = await quattroService.actualizarProspecto(payload);
+        const contacto = await hubspotService.obtenerContactoPorId(contactId);
+        const props = contacto.properties;
+
+        const prospecto = mapearProspecto(props, 2); // status 2 = Cotización
+
+        console.log('📤 Enviando lead calificado a Quattro:', prospecto);
+
+        let result;
+        if (props.id_quattro) {
+            result = await quattroService.actualizarProspecto(prospecto);
+        } else {
+            result = await quattroService.crearProspecto(prospecto);
+            if (result?.contactID) {
+                await hubspotService.actualizarContacto(contactId, {
+                    id_quattro: String(result.contactID)
+                });
+            }
+        }
+
+        res.status(200).json({
+            status: 'success',
+            message: `Lead scoring ${score} enviado a Quattro`,
+            data: result
+        });
+
+    } catch (error) {
+        console.error('❌ Error en leadScoring:', error.message);
+        res.status(500).json({ error: 'Error procesando lead scoring' });
+    }
+};
+
+// ─── Caso 3: Cambio de estatus del lead / motivo rechazo / etapa proceso ──────
+exports.actualizarEstatusLead = async (req, res) => {
+    const contactId = extraerContactId(req.body);
+    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+    const propertyName = evento.propertyName;
+    const propertyValue = evento.propertyValue;
+
+    console.log('📥 Caso 3 - Estatus lead:', { contactId, propertyName, propertyValue });
+
+    if (!contactId) {
+        return res.status(400).json({ error: 'objectId no encontrado en webhook' });
+    }
+
+    try {
+        const contacto = await hubspotService.obtenerContactoPorId(contactId);
+        const props = contacto.properties;
+
+        if (!props.id_quattro) {
+            return res.status(400).json({
+                error: `Contacto ${contactId} no tiene id_quattro en HubSpot`
+            });
+        }
+
+        // Mapear estatus_del_lead de HubSpot → status Quattro
+        const statusMap = {
+            'new': 1,
+            'open': 2,
+            'in_progress': 3,
+            'open_deal': 4,
+            'unqualified': 7,
+            'bad_timing': 7,
+        };
+
+        const status = statusMap[props.estatus_del_lead] || 1;
+        const prospecto = mapearProspecto(props, status);
+
+        console.log('📤 Actualizando estatus en Quattro:', prospecto);
+        const result = await quattroService.actualizarProspecto(prospecto);
+
+        saveToFile({ caso: 'estatus_lead', contactId, propertyName, propertyValue, result });
 
         res.status(200).json({
             status: 'success',
