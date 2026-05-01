@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const hubspotController = require('../controllers/hubspotController');
+const validateHubspotSignature = require('../middleware/validateHubspot');
+
+
+// Aplicar validación de firma en todos los endpoints de HubSpot
+router.use(validateHubspotSignature);
 
 // Caso 1 - Formulario llenado / contact.creation
 router.post('/prospecto', hubspotController.crearProspecto);
