@@ -13,13 +13,15 @@ if (!config.QUATTRO_AUTH_URL) {
 let cachedToken = null;
 let tokenExpiry = null;
 
-const getToken = async () => {
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const getToken = async (intento = 1, maxIntentos = 3) => {
     if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
         return cachedToken;
     }
 
     try {
-        console.log('🔐 Obteniendo token de Quattro...');
+        console.log(`🔐 Obteniendo token de Quattro... (intento ${intento}/${maxIntentos})`);
         console.log('URL:', config.QUATTRO_AUTH_URL);
         console.log('Auth header presente:', !!config.QUATTRO_BASIC_AUTH);
 
@@ -28,15 +30,23 @@ const getToken = async () => {
         });
 
         cachedToken = res.data.result.token;
-        // Cambiar de 60 minutos a 25 minutos para tener margen
         tokenExpiry = Date.now() + (25 * 60 * 1000);
         console.log('✅ Token obtenido correctamente');
         return cachedToken;
 
     } catch (error) {
-        console.error('❌ Error obteniendo token:', error.message);
+        console.error(`❌ Error obteniendo token (intento ${intento}):`, error.message);
         console.error('❌ Response data:', error.response?.data);
         console.error('❌ Response status:', error.response?.status);
+
+        if (intento < maxIntentos) {
+            const espera = intento * 2000; // 2s, 4s
+            console.log(`⏳ Reintentando en ${espera / 1000}s...`);
+            await sleep(espera);
+            return getToken(intento + 1, maxIntentos);
+        }
+
+        console.error('❌ Se agotaron los intentos para obtener token de Quattro');
         throw error;
     }
 };
@@ -53,6 +63,31 @@ quattro.interceptors.request.use(async (reqConfig) => {
     return reqConfig;
 });
 
+// ─── Interceptor de respuesta: retry si el token expiró (401) ────────────────
+quattro.interceptors.response.use(
+    response => response,
+    async (error) => {
+        const originalRequest = error.config;
+
+        if (error.response?.status === 401 && !originalRequest._retry) {
+            console.log('⚠️ Token expirado (401), forzando renovación...');
+            originalRequest._retry = true;
+            cachedToken = null;
+            tokenExpiry = null;
+
+            try {
+                const nuevoToken = await getToken();
+                originalRequest.headers['Authorization'] = `Bearer ${nuevoToken}`;
+                return quattro(originalRequest);
+            } catch (retryError) {
+                console.error('❌ No se pudo renovar el token después de 401');
+                throw retryError;
+            }
+        }
+
+        throw error;
+    }
+);
 
 // ─── Mapeo de campos HubSpot → Quattro ───────────────────────────────────────
 const mapearProspecto = (payload) => {
