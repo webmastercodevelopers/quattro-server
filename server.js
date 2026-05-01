@@ -7,8 +7,20 @@ const errorHandler = require('./src/middleware/errorHandler');
 
 const app = express();
 
-// Middleware
-app.use(express.json({ limit: '10kb' }));
+// Capturar raw body para validación de firma de HubSpot
+app.use((req, res, next) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => {
+        req.rawBody = data;
+        try {
+            req.body = data ? JSON.parse(data) : {};
+        } catch {
+            req.body = {};
+        }
+        next();
+    });
+});
 
 // Routes
 app.use('/api/webhook', webhookRoutes);       // Quattro → HubSpot (Casos 4 y 5)
@@ -46,11 +58,11 @@ app.get('/health', async (req, res) => {
 
     // ── Verificar conectividad con HubSpot API ──
     try {
-        const res = await axios.get('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
+        const hsRes = await axios.get('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
             headers: { 'Authorization': `Bearer ${config.HUBSPOT_API_KEY}` },
             timeout: 5000
         });
-        resultado.servicios.hubspot_api = { status: res.status === 200 ? 'ok' : 'error' };
+        resultado.servicios.hubspot_api = { status: hsRes.status === 200 ? 'ok' : 'error' };
     } catch (err) {
         resultado.servicios.hubspot_api = {
             status: 'error',

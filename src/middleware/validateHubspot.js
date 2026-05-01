@@ -4,8 +4,9 @@ const HUBSPOT_CLIENT_SECRET = '5a311979-9b18-4648-b114-a7a5eb52a667';
 
 const validateHubspotSignature = (req, res, next) => {
     try {
-        const signature = req.headers['x-hubspot-signature-v3'] || req.headers['x-hubspot-signature'];
-        const signatureVersion = req.headers['x-hubspot-signature-version'];
+        const signatureV3 = req.headers['x-hubspot-signature-v3'];
+        const signatureV1 = req.headers['x-hubspot-signature'];
+        const signature = signatureV3 || signatureV1;
 
         // Si no viene firma, rechazar
         if (!signature) {
@@ -13,21 +14,22 @@ const validateHubspotSignature = (req, res, next) => {
             return res.status(401).json({ error: 'Firma de HubSpot requerida' });
         }
 
+        // Usar raw body capturado en server.js
+        const rawBody = req.rawBody || '';
+
         let expectedSignature;
 
-        if (signatureVersion === 'v3' || req.headers['x-hubspot-signature-v3']) {
-            // Firma v3: HMAC-SHA256 de (clientSecret + httpMethod + uri + body + timestamp)
+        if (signatureV3) {
+            // Firma v3: HMAC-SHA256 de (httpMethod + uri + body + timestamp)
             const timestamp = req.headers['x-hubspot-request-timestamp'];
             const uri = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-            const body = JSON.stringify(req.body);
-            const source = `${HUBSPOT_CLIENT_SECRET}${req.method}${uri}${body}${timestamp}`;
+            const source = `${req.method}${uri}${rawBody}${timestamp}`;
             expectedSignature = crypto.createHmac('sha256', HUBSPOT_CLIENT_SECRET)
                 .update(source)
-                .digest('hex');
+                .digest('base64');
         } else {
             // Firma v1: SHA256 de (clientSecret + body)
-            const body = JSON.stringify(req.body);
-            const source = `${HUBSPOT_CLIENT_SECRET}${body}`;
+            const source = `${HUBSPOT_CLIENT_SECRET}${rawBody}`;
             expectedSignature = crypto.createHash('sha256')
                 .update(source)
                 .digest('hex');
@@ -35,6 +37,8 @@ const validateHubspotSignature = (req, res, next) => {
 
         if (signature !== expectedSignature) {
             console.warn('⚠️ Firma de HubSpot inválida — request rechazado');
+            console.warn('Expected:', expectedSignature);
+            console.warn('Received:', signature);
             return res.status(401).json({ error: 'Firma de HubSpot inválida' });
         }
 
