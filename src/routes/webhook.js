@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 const webhookController = require('../controllers/webhookController');
 const validar = require('../middleware/validatePayload');
+const validateQuattroSecret = require('../middleware/validateQuattro');
+
+// Aplicar validación de API Key en todos los endpoints de Quattro
+router.use(validateQuattroSecret);
 
 // Caso 4 - Cierre de venta
 router.post('/cierre-venta', validar('cierreVenta'), webhookController.cierreVenta);
