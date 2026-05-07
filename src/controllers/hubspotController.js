@@ -47,6 +47,15 @@ const extraerContactId = (body) => {
     return eventos[0]?.objectId || null;
 };
 
+// ─── Propiedades que deben ignorarse para evitar loops ───────────────────────
+const PROPIEDADES_IGNORADAS = new Set([
+    'id_quattro',
+    'hs_object_id',
+    'hs_lastmodifieddate',
+    'lastmodifieddate',
+    'hs_updated_by_user_id',
+]);
+
 // ─── Mapeo de lifecycleStage → status Quattro ────────────────────────────────
 const lifecycleToStatus = {
     'subscriber': 1,
@@ -60,7 +69,8 @@ const lifecycleToStatus = {
 
 // ─── Caso 1: Contacto llena formulario ───────────────────────────────────────
 exports.crearProspecto = async (req, res) => {
-    const evento = Array.isArray(req.body) ? req.body[0] : req.body;
+    const eventos = Array.isArray(req.body) ? req.body : [req.body];
+    const evento = eventos[0];
     const subscriptionType = evento.subscriptionType || '';
 
     const tiposPermitidos = ['contact.creation', 'contact.propertyChange'];
@@ -69,14 +79,20 @@ exports.crearProspecto = async (req, res) => {
         return res.status(200).json({ status: 'ignored', message: `Evento ${subscriptionType} ignorado` });
     }
 
-    // Ignorar si el cambio fue en id_quattro (evita loop)
-    if (subscriptionType === 'contact.propertyChange' && evento.propertyName === 'id_quattro') {
-        console.log('⏭️ Ignorando cambio en id_quattro para evitar loop');
-        return res.status(200).json({ status: 'ignored', message: 'Cambio en id_quattro ignorado' });
+    // Ignorar si TODOS los cambios son en propiedades ignoradas (evita loops)
+    if (subscriptionType === 'contact.propertyChange') {
+        const todasIgnoradas = eventos.every(e => PROPIEDADES_IGNORADAS.has(e.propertyName));
+        if (todasIgnoradas) {
+            const props = eventos.map(e => e.propertyName).join(', ');
+            console.log(`⏭️ Ignorando cambio en propiedades internas: ${props}`);
+            return res.status(200).json({ status: 'ignored', message: `Cambio en propiedad interna ignorado` });
+        }
+        // Log de qué propiedad disparó el webhook
+        const propsCambiadas = eventos.map(e => e.propertyName).join(', ');
+        console.log(`🔔 Propiedades cambiadas: ${propsCambiadas}`);
     }
 
     const contactId = extraerContactId(req.body);
-
     console.log('📥 Caso 1 - Formulario llenado:', { contactId, subscriptionType });
 
     if (!contactId) {
@@ -91,11 +107,9 @@ exports.crearProspecto = async (req, res) => {
         let result;
 
         if (props.id_quattro) {
-            // Ya existe en Quattro → actualizar
             console.log(`📤 Contacto ya existe en Quattro (${props.id_quattro}), actualizando...`);
             result = await quattroService.actualizarProspecto(prospecto);
         } else {
-            // No existe → crear
             console.log('📤 Contacto nuevo, creando en Quattro...');
             result = await quattroService.crearProspecto(prospecto);
 
@@ -135,7 +149,6 @@ exports.actualizarLifecycle = async (req, res) => {
         const contacto = await hubspotService.obtenerContactoPorId(contactId);
         const props = contacto.properties;
 
-        // Verificar que tiene ID de Quattro
         if (!props.id_quattro) {
             console.warn(`⚠️ Contacto ${contactId} no tiene id_quattro, creando en Quattro primero`);
             const prospecto = mapearProspecto(props, 1);
@@ -189,7 +202,7 @@ exports.leadScoring = async (req, res) => {
         const contacto = await hubspotService.obtenerContactoPorId(contactId);
         const props = contacto.properties;
 
-        const prospecto = mapearProspecto(props, 2); // status 2 = Cotización
+        const prospecto = mapearProspecto(props, 2);
 
         console.log('📤 Enviando lead calificado a Quattro:', prospecto);
 
@@ -240,7 +253,6 @@ exports.actualizarEstatusLead = async (req, res) => {
             });
         }
 
-        // Mapear estatus_del_lead de HubSpot → status Quattro
         const statusMap = {
             'new': 1,
             'open': 2,
