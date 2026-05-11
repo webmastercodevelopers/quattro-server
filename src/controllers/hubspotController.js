@@ -3,6 +3,26 @@ const config = require('../config');
 const quattroService = require('../services/quattroService');
 const hubspotService = require('../services/hubspotService');
 
+// ─── Debounce por contactId ───────────────────────────────────────────────────
+const timers = new Map();
+const DEBOUNCE_MS = 3000; // 3 segundos
+
+const procesarConDebounce = (contactId, fn) => {
+    // Si hay un timer pendiente para este contacto, cancelarlo
+    if (timers.has(contactId)) {
+        clearTimeout(timers.get(contactId));
+        console.log(`⏱️ Debounce: reiniciando timer para contacto ${contactId}`);
+    }
+
+    // Programar el procesamiento en DEBOUNCE_MS
+    const timer = setTimeout(async () => {
+        timers.delete(contactId);
+        await fn();
+    }, DEBOUNCE_MS);
+
+    timers.set(contactId, timer);
+};
+
 // ─── Helper: guardar payload en JSON para debug/log ───────────────────────────
 const saveToFile = (payload) => {
     try {
@@ -79,7 +99,7 @@ exports.crearProspecto = async (req, res) => {
         return res.status(200).json({ status: 'ignored', message: `Evento ${subscriptionType} ignorado` });
     }
 
-    // Ignorar si TODOS los cambios son en propiedades ignoradas (evita loops)
+    // Ignorar si TODOS los cambios son en propiedades ignoradas
     if (subscriptionType === 'contact.propertyChange') {
         const todasIgnoradas = eventos.every(e => PROPIEDADES_IGNORADAS.has(e.propertyName));
         if (todasIgnoradas) {
@@ -87,7 +107,6 @@ exports.crearProspecto = async (req, res) => {
             console.log(`⏭️ Ignorando cambio en propiedades internas: ${props}`);
             return res.status(200).json({ status: 'ignored', message: `Cambio en propiedad interna ignorado` });
         }
-        // Log de qué propiedad disparó el webhook
         const propsCambiadas = eventos.map(e => e.propertyName).join(', ');
         console.log(`🔔 Propiedades cambiadas: ${propsCambiadas}`);
     }
@@ -99,38 +118,38 @@ exports.crearProspecto = async (req, res) => {
         return res.status(400).json({ error: 'objectId no encontrado en webhook' });
     }
 
-    try {
-        const contacto = await hubspotService.obtenerContactoPorId(contactId);
-        const props = contacto.properties;
-        const prospecto = mapearProspecto(props, 1);
+    // Responder inmediatamente a HubSpot para evitar retries
+    res.status(200).json({ status: 'queued', message: 'Webhook recibido, procesando...' });
 
-        let result;
+    // Programar el procesamiento con debounce
+    procesarConDebounce(contactId, async () => {
+        try {
+            console.log(`⚙️ Procesando contacto ${contactId} (después de debounce)`);
+            const contacto = await hubspotService.obtenerContactoPorId(contactId);
+            const props = contacto.properties;
+            const prospecto = mapearProspecto(props, 1);
 
-        if (props.id_quattro) {
-            console.log(`📤 Contacto ya existe en Quattro (${props.id_quattro}), actualizando...`);
-            result = await quattroService.actualizarProspecto(prospecto);
-        } else {
-            console.log('📤 Contacto nuevo, creando en Quattro...');
-            result = await quattroService.crearProspecto(prospecto);
+            let result;
 
-            if (result?.contactID) {
-                await hubspotService.actualizarContacto(contactId, {
-                    id_quattro: String(result.contactID)
-                });
-                console.log(`✅ ID Quattro ${result.contactID} guardado en HubSpot contacto ${contactId}`);
+            if (props.id_quattro) {
+                console.log(`📤 Contacto ya existe en Quattro (${props.id_quattro}), actualizando...`);
+                result = await quattroService.actualizarProspecto(prospecto);
+            } else {
+                console.log('📤 Contacto nuevo, creando en Quattro...');
+                result = await quattroService.crearProspecto(prospecto);
+
+                if (result?.contactID) {
+                    await hubspotService.actualizarContacto(contactId, {
+                        id_quattro: String(result.contactID)
+                    });
+                    console.log(`✅ ID Quattro ${result.contactID} guardado en HubSpot contacto ${contactId}`);
+                }
             }
+
+        } catch (error) {
+            console.error('❌ Error en crearProspecto (debounce):', error.message);
         }
-
-        res.status(200).json({
-            status: 'success',
-            message: props.id_quattro ? 'Prospecto actualizado en Quattro' : 'Prospecto creado en Quattro',
-            data: result
-        });
-
-    } catch (error) {
-        console.error('❌ Error en crearProspecto:', error.message);
-        res.status(500).json({ error: 'Error procesando webhook de HubSpot' });
-    }
+    });
 };
 
 // ─── Caso 2a: Cambio en Lifecycle Stage ──────────────────────────────────────
